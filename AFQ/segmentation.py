@@ -285,7 +285,9 @@ class Segmentation:
                                     self.fbvec,
                                     b0_threshold=self.b0_threshold)
             self.mapping = reg.read_mapping(mapping, self.img, reg_template,
-                                            prealign=reg_prealign)
+                                            prealign=np.linalg.inv(reg_prealign))
+            # replaced the pre_align with its inverse _aNNe
+            # that fixed the warped rois and the warped prob maps which were wrong otherwise
         else:
             self.mapping = mapping
 
@@ -344,6 +346,12 @@ class Segmentation:
             else:
                 # Exclude ROI:
                 exclude_rois.append(np.array(np.where(warped_roi)).T)
+########for debugging: save the warped ROI that is actually used in segment_afq() ##########
+#       path_for_debugging = '/debugpath/'
+#            nib.save(nib.Nifti1Image(warped_roi.astype(np.float32),
+#                                     self.img_affine),
+#                     debugpath+'warpedROI_'+bundle+'as_used.nii.gz')
+############################################################################################
 
         # The probability map if doesn't exist is all ones with the same
         # shape as the ROIs:
@@ -414,6 +422,16 @@ class Segmentation:
         self.tg.to_vox()
         # For expedience, we approximate each streamline as a 100 point curve:
         fgarray = np.array(_resample_tg(tg, 100))
+        
+        # comment _aNNe
+        # in general, this might cause errors: 
+        # if rois were traversed by streamlines in just a few voxels
+        # and if streamlines were so long or resolution so high 
+        # that one hundredth of a streamline length was more than a voxel,
+        # then the contact check below (closest distance streamline to ROI < voxel width) can fail when resampling to 100 points
+        # To be cartain that the resampling does not cause problems, 
+        # the number of resamplign points has to be larger than the length of the streamline in voxels in native space! 
+        # end comment
 
         n_streamlines = fgarray.shape[0]
 
@@ -443,6 +461,12 @@ class Segmentation:
             self.logger.info(f"Finding Streamlines for {bundle}")
             warped_prob_map, include_roi, exclude_roi = \
                 self._get_bundle_info(bundle_idx, bundle)
+########for debugging: save the warped probability map that is actually used in segment_afq() ##########
+#            path_for_debugging = '/debugpath/'
+#            nib.save(nib.Nifti1Image(warped_prob_map.astype(np.float32),
+#                                     self.img_affine),
+#                      debugpath+'warpedprobmap_'+bundle+'as_used.nii.gz')
+############################################################################################
             fiber_probabilities = dts.values_from_volume(
                 warped_prob_map,
                 fgarray, np.eye(4))
